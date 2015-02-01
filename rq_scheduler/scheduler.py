@@ -21,13 +21,11 @@ class Scheduler(object):
     scheduler_key = 'rq:scheduler'
     scheduled_jobs_key = 'rq:scheduler:scheduled_jobs'
 
-    def __init__(self, queue_name='default', interval=60, connection=None,
-            dont_enqueue_dupes=False):
+    def __init__(self, queue_name='default', interval=60, connection=None):
         from rq.connections import resolve_connection
         self.connection = resolve_connection(connection)
         self.queue_name = queue_name
         self._interval = interval
-        self._dont_enqueue_dupes = dont_enqueue_dupes
         self.log = logger
 
     def register_birth(self):
@@ -131,7 +129,8 @@ class Scheduler(object):
                             interval=interval, repeat=repeat)
 
     def schedule(self, scheduled_time, func, args=None, kwargs=None,
-                interval=None, repeat=None, result_ttl=None, timeout=None, queue_name=None):
+                interval=None, repeat=None, result_ttl=None, timeout=None,
+                queue_name=None, dont_enqueue_dupes=False):
         """
         Schedule a job to be periodically executed, at a certain interval.
         """
@@ -148,6 +147,7 @@ class Scheduler(object):
             raise ValueError("Can't repeat a job without interval argument")
         if timeout is not None:
             job.timeout = timeout
+        job.meta['dont_enqueue_dupes'] = dont_enqueue_dupes
         job.save()
         self.connection._zadd(self.scheduled_jobs_key,
                               to_unix(scheduled_time),
@@ -275,7 +275,7 @@ class Scheduler(object):
 
         queue = self.get_queue_for_job(job)
         self.connection.sadd(queue.redis_queues_keys, queue.key)
-        if not self._dont_enqueue_dupes or job.id not in [j.id for j in q.jobs]:
+        if not job.meta['dont_enqueue_dupes'] or job.id not in [j.id for j in queue.jobs]:
             # With no_dupes option, the job is only enqueued if it isn't
             # already on the queue
             queue.push_job_id(job.id)
