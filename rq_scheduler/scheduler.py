@@ -21,11 +21,13 @@ class Scheduler(object):
     scheduler_key = 'rq:scheduler'
     scheduled_jobs_key = 'rq:scheduler:scheduled_jobs'
 
-    def __init__(self, queue_name='default', interval=60, connection=None):
+    def __init__(self, queue_name='default', interval=60, connection=None,
+            dont_enqueue_dupes=False):
         from rq.connections import resolve_connection
         self.connection = resolve_connection(connection)
         self.queue_name = queue_name
         self._interval = interval
+        self._dont_enqueue_dupes = dont_enqueue_dupes
         self.log = logger
 
     def register_birth(self):
@@ -273,7 +275,10 @@ class Scheduler(object):
 
         queue = self.get_queue_for_job(job)
         self.connection.sadd(queue.redis_queues_keys, queue.key)
-        queue.push_job_id(job.id)
+        if not self._dont_enqueue_dupes or job.id not in [j.id for j in q.jobs]:
+            # With no_dupes option, the job is only enqueued if it isn't
+            # already on the queue
+            queue.push_job_id(job.id)
         self.connection.zrem(self.scheduled_jobs_key, job.id)
 
         if interval:
