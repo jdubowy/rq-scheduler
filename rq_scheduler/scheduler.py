@@ -257,7 +257,7 @@ class Scheduler(object):
         key = '{0}{1}'.format(Queue.redis_queue_namespace_prefix, job.origin)
         return Queue.from_queue_key(key, connection=self.connection)
 
-    def enqueue_job(self, job):
+    def enqueue_job(self, job, sched_time=None):
         """
         Move a scheduled job to a queue. In addition, it also does puts the job
         back into the scheduler if needed.
@@ -286,9 +286,8 @@ class Scheduler(object):
             if repeat is not None:
                 if job.meta['repeat'] == 0:
                     return
-            self.connection._zadd(self.scheduled_jobs_key,
-                                  to_unix(datetime.utcnow()) + int(interval),
-                                  job.id)
+            next_time = to_unix(sched_time or datetime.utcnow()) + int(interval)
+            self.connection._zadd(self.scheduled_jobs_key, next_time, job.id)
 
     def enqueue_jobs(self):
         """
@@ -296,9 +295,9 @@ class Scheduler(object):
         """
         self.log.info('Checking for scheduled jobs...')
 
-        jobs = self.get_jobs_to_queue()
-        for job in jobs:
-            self.enqueue_job(job)
+        jobs = self.get_jobs_to_queue(True)
+        for job, sched_time in jobs:
+            self.enqueue_job(job, sched_time)
 
         # Refresh scheduler key's expiry
         self.connection.expire(self.scheduler_key, int(self._interval) + 10)
