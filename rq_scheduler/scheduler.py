@@ -271,6 +271,8 @@ class Scheduler(object):
         if repeat:
             job.meta['repeat'] = int(repeat) - 1
         job.enqueued_at = datetime.utcnow()
+        if sched_time:
+            job.meta['scheduled_for'] = sched_time
         job.save()
 
         queue = self.get_queue_for_job(job)
